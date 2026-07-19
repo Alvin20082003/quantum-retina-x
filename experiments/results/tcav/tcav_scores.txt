@@ -1,0 +1,24 @@
+TCAV Concept Scores by DR Grade
+==================================================
+
+HEMORRHAGE:
+  Grade 0 (Healthy): 0.000
+  Grade 1 (Mild (Early)): 0.200
+  Grade 2 (Moderate): 0.900
+  Grade 3 (Severe): 1.000
+  Grade 4 (Proliferative): 1.000
+
+EXUDATE:
+  Grade 0 (Healthy): 0.000
+  Grade 1 (Mild (Early)): 0.667
+  Grade 2 (Moderate): 1.000
+  Grade 3 (Severe): 1.000
+  Grade 4 (Proliferative): 1.000
+
+EDEMA:
+  Grade 0 (Healthy): 0.000
+  Grade 1 (Mild (Early)): 0.700
+  Grade 2 (Moderate): 1.000
+  Grade 3 (Severe): 1.000
+  Grade 4 (Proliferative): 1.000
+

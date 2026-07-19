@@ -1,0 +1,14 @@
+timestamp,run_name,dataset,model,accuracy,macro_f1,auc_roc,kappa,grade1_sensitivity,notes
+2026-07-11T20:29:17,phase0_smoke_test,,,,,,,,scaffolding works
+2026-07-12T00:26:40,vit_baseline,aptos,ViT-Base,0.7836,0.6376,0.9363,0.8811,0.7321,"per_grade_sens=[0.974, 0.732, 0.587, 0.724, 0.386]"
+2026-07-13T09:29:36,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"
+2026-07-13T13:09:56,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"
+2026-07-13T13:11:26,hybrid_g1boost,aptos,ViT+VQC (G1-boost),0.7455,0.5242,0.9014,0.7619,0.7857,"g1boost=3.0 per_grade=[0.97, 0.786, 0.513, 0.0, 0.591]"
+2026-07-14T00:12:12,hybrid_best,aptos,ViT+VQC (balanced),0.8145,0.6492,0.8939,0.872,0.6607,"g1boost=3.0 g1_threshold=0.72 per_grade=[0.97, 0.661, 0.773, 0.276, 0.545]"
+2026-07-14T10:45:33,vqc_only,aptos,VQC only,0.5455,0.2369,0.6455,0.2885,0.0,"config_B per_grade=[0.775, 0.0, 0.6, 0.0, 0.0]"
+2026-07-14T21:11:47,crossval_messidor_ViT-only,messidor,ViT-only,0.594,0.3234,0.7598,0.4492,0.0333,"cross-dataset per_grade=[0.947, 0.033, 0.133, 0.093, 0.314]"
+2026-07-14T21:13:02,crossval_messidor_ViT+VQC,messidor,ViT+VQC,0.5831,0.2953,0.577,0.4302,0.0556,"cross-dataset per_grade=[0.92, 0.056, 0.159, 0.0, 0.314]"
+2026-07-14T21:14:29,crossval_idrid_ViT-only,idrid,ViT-only,0.4286,0.3252,0.7861,0.5781,0.3182,"cross-dataset per_grade=[0.31, 0.318, 0.756, 0.31, 0.062]"
+2026-07-14T21:15:51,crossval_idrid_ViT+VQC,idrid,ViT+VQC,0.4352,0.3354,0.6572,0.6184,0.5,"cross-dataset per_grade=[0.271, 0.5, 0.827, 0.048, 0.297]"
+2026-07-14T21:28:07,crossval_eyepacs_ViT-only,eyepacs,ViT-only,0.6422,0.352,0.7245,0.4119,0.181,"5k subset cross-dataset per_grade=[0.799, 0.181, 0.216, 0.073, 0.406]"
+2026-07-14T21:31:48,crossval_eyepacs_ViT+VQC,eyepacs,ViT+VQC,0.6304,0.3249,0.6033,0.4123,0.1897,"5k subset cross-dataset per_grade=[0.778, 0.19, 0.255, 0.008, 0.337]"

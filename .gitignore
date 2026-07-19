@@ -28,8 +28,7 @@ data/**/*.png
 data/**/*.jpg
 data/**/*.jpeg
 
-# Experiment outputs / logs
-experiments/results/
+# Experiment outputs / logs (keep results, exclude raw logs)
 *.log
 logs/
 
