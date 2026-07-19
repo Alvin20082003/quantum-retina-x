@@ -1,0 +1,364 @@
+import { useState, useRef, useCallback } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { Upload, Activity, FileText, Eye, Brain, Settings, Info, Download, AlertTriangle, CheckCircle, Shield, Zap, User, ChevronDown, Droplets } from "lucide-react";
+
+const API = "/api";
+
+interface PredResult {
+  grade: number; grade_label: string; confidence: number;
+  probabilities: number[]; original_b64: string; heatmap_b64: string;
+  tcav_scores: Record<string,number>; recommendation: string;
+  risk_level: string; early_detection: boolean; model_type: string;
+  inference_time: number; dr_type?: string; dme_detected?: boolean; dme_confidence?: number;
+}
+
+const GRADE_COLORS = ["#10b981","#f59e0b","#f97316","#ef4444","#dc2626"];
+const RISK_COLORS: Record<string,string> = { LOW:"#10b981", MODERATE:"#f59e0b", HIGH:"#f97316", "VERY HIGH":"#ef4444", CRITICAL:"#dc2626" };
+
+const ABLATION = [
+  { config: "VQC Only (B)", accuracy: 54.6, kappa: 0.289, g1: 0.0, color: "#ef4444" },
+  { config: "ViT Only (A)", accuracy: 78.4, kappa: 0.881, g1: 73.2, color: "#3b82f6" },
+  { config: "ViT+VQC (C)", accuracy: 81.6, kappa: 0.872, g1: 78.6, color: "#8b5cf6" },
+];
+
+const CROSS_DATASET = [
+  { dataset: "APTOS (India)", role: "Trained", vit_acc: 78.4, vqc_acc: 81.6, vit_g1: 73.2, vqc_g1: 78.6 },
+  { dataset: "Messidor (France)", role: "Tested (unseen)", vit_acc: 59.4, vqc_acc: 58.3, vit_g1: 3.3, vqc_g1: 5.6 },
+  { dataset: "IDRiD (India)", role: "Tested (unseen)", vit_acc: 42.9, vqc_acc: 43.5, vit_g1: 31.8, vqc_g1: 50.0 },
+  { dataset: "EyePACS (USA)", role: "Tested (unseen)", vit_acc: 64.2, vqc_acc: 63.0, vit_g1: 18.1, vqc_g1: 19.0 },
+];
+
+const TCAV_REF: Record<string, Record<number, number>> = {
+  hemorrhage: { 0: 0.0, 1: 0.2, 2: 0.9, 3: 1.0, 4: 1.0 },
+  exudate: { 0: 0.0, 1: 0.67, 2: 1.0, 3: 1.0, 4: 1.0 },
+  edema: { 0: 0.0, 1: 0.7, 2: 1.0, 3: 1.0, 4: 1.0 },
+};
+
+type Page = "dashboard"|"upload"|"reports"|"explainability"|"insights"|"settings"|"about";
+const SIDEBAR: {icon:any;label:string;page:Page}[] = [
+  {icon:Activity,label:"Dashboard",page:"dashboard"},{icon:Upload,label:"Upload Image",page:"upload"},
+  {icon:FileText,label:"Reports",page:"reports"},{icon:Eye,label:"Explainability",page:"explainability"},
+  {icon:Brain,label:"Model Insights",page:"insights"},{icon:Settings,label:"Settings",page:"settings"},
+  {icon:Info,label:"About",page:"about"},
+];
+
+function Card({title,children,icon}:{title:string;children:React.ReactNode;icon?:React.ReactNode}) {
+  return <div className="rounded-xl p-5" style={{background:"#0f1729",border:"1px solid #1e293b"}}><div className="text-sm font-medium mb-4 flex items-center gap-2">{icon}{title}</div>{children}</div>;
+}
+function StatBox({label,value,sub,color}:{label:string;value:string;sub?:string;color?:string}) {
+  return <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}><div className="text-xs text-slate-400 mb-1">{label}</div><div className="text-2xl font-bold" style={{color:color||"#e2e8f0"}}>{value}</div>{sub&&<div className="text-xs text-slate-500 mt-1">{sub}</div>}</div>;
+}
+
+function LesionPanel({tcav}:{tcav:Record<string,number>}) {
+  const lesions = [
+    {name:"Microaneurysms",key:"hemorrhage",threshold:0.3},
+    {name:"Hemorrhages",key:"hemorrhage",threshold:0.5},
+    {name:"Hard Exudates",key:"exudate",threshold:0.5},
+    {name:"Macular Swelling",key:"edema",threshold:0.5},
+    {name:"Neovascularization",key:"hemorrhage",threshold:0.95},
+  ];
+  return (
+    <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+      <div className="text-sm font-medium mb-3 flex items-center gap-2"><Eye size={14} className="text-purple-400"/>Lesion detection</div>
+      <div className="space-y-2">{lesions.map(l=>{
+        const score=tcav[l.key]||0; const detected=score>=l.threshold;
+        return <div key={l.name} className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2"><CheckCircle size={14} className={detected?"text-green-400":"text-slate-600"}/><span className="text-slate-300">{l.name}</span></div>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${detected?"bg-green-500/20 text-green-400":"bg-slate-700 text-slate-500"}`}>{detected?"Detected":"Not detected"}</span>
+        </div>;
+      })}</div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [page,setPage]=useState<Page>("dashboard");
+  const [result,setResult]=useState<PredResult|null>(null);
+  const [loading,setLoading]=useState(false);
+  const [step,setStep]=useState(0);
+  const [preview,setPreview]=useState<string|null>(null);
+  const [modelType,setModelType]=useState<"hybrid"|"vit">("hybrid");
+  const [dragOver,setDragOver]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  const [heatmapOpacity,setHeatmapOpacity]=useState(85);
+  const [scanHistory,setScanHistory]=useState<PredResult[]>([]);
+  const [selectedScan,setSelectedScan]=useState<PredResult|null>(null);
+  const fileRef=useRef<HTMLInputElement>(null);
+  const steps=["Reading 196 patches","Quantum circuit (16D Hilbert)","Generating Grad-CAM","Computing TCAV scores"];
+
+  const handleFile=useCallback(async(file:File)=>{
+    setError(null);setResult(null);setLoading(true);setStep(0);setPage("dashboard");setSelectedScan(null);
+    const reader=new FileReader();reader.onload=(e)=>setPreview(e.target?.result as string);reader.readAsDataURL(file);
+    const iv=setInterval(()=>setStep(s=>Math.min(s+1,3)),1200);
+    const form=new FormData();form.append("file",file);
+    try{const res=await fetch(`${API}/predict?model_type=${modelType}`,{method:"POST",body:form});
+      if(!res.ok)throw new Error(`Server error ${res.status}`);
+      const data:PredResult=await res.json();clearInterval(iv);setResult(data);setLoading(false);
+      setScanHistory(prev=>[data,...prev].slice(0,20));
+    }catch(e:any){clearInterval(iv);setError(e.message);setLoading(false);}
+  },[modelType]);
+
+  const onDrop=useCallback((e:React.DragEvent)=>{e.preventDefault();setDragOver(false);if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);},[handleFile]);
+
+  const downloadHeatmap=()=>{if(!r)return;const link=document.createElement("a");link.href=`data:image/png;base64,${r.heatmap_b64}`;link.download=`quantumretina_heatmap_grade${r.grade}.png`;link.click();};
+  const downloadReport=()=>{if(!r)return;const text=`QuantumRetina-X Diagnostic Report\n${"=".repeat(40)}\nDate: ${new Date().toLocaleString()}\nModel: ${r.model_type==="hybrid"?"ViT + VQC (Quantum)":"ViT Only"}\n\nDiabetic Retinopathy: ${r.grade_label}\nGrade: ${r.grade} | Confidence: ${(r.confidence*100).toFixed(1)}%\n\nDiabetic Macular Edema: ${r.dme_detected?"DETECTED":"Not detected"}\nDME Confidence: ${r.dme_confidence||0}%\n\nRisk Level: ${r.risk_level}\n\nTCAV Concept Scores:\n${Object.entries(r.tcav_scores).map(([k,v])=>`  ${k}: ${Number(v).toFixed(2)}`).join("\n")}\n\nRecommendation: ${r.recommendation}\nInference Time: ${r.inference_time}s\n${"=".repeat(40)}\nGenerated by QuantumRetina-X v1.0`;
+    const blob=new Blob([text],{type:"text/plain"});const link=document.createElement("a");link.href=URL.createObjectURL(blob);link.download=`quantumretina_report.txt`;link.click();};
+
+  const r = selectedScan || result;
+  const probData = r ? r.probabilities.map((p,i)=>({name:`G${i}`,value:Math.round(p*100),grade:i})) : [];
+  const tcavData = r ? Object.entries(r.tcav_scores).map(([k,v])=>({name:k.charAt(0).toUpperCase()+k.slice(1),value:Number((v as number).toFixed(2))})) : [];
+
+  const renderUploadZone=()=>(
+    <div className="rounded-xl p-8 flex flex-col items-center justify-center min-h-[350px] cursor-pointer transition-all"
+      style={{background:dragOver?"#1a1040":"#0f1729",border:dragOver?"2px dashed #7c3aed":"2px dashed #2d3748"}}
+      onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={onDrop} onClick={()=>fileRef.current?.click()}>
+      <Upload size={48} className="text-purple-400 mb-4"/>
+      <p className="text-lg font-medium mb-1">Drop retinal fundus image here</p>
+      <p className="text-sm text-slate-400 mb-4">or click to browse ? PNG, JPG supported</p>
+      <button className="px-5 py-2 bg-purple-600 rounded-lg text-sm font-medium hover:bg-purple-500 transition">Select Image</button>
+      <input ref={fileRef} type="file" className="hidden" accept="image/*" onChange={e=>{if(e.target.files?.[0])handleFile(e.target.files[0])}}/>
+    </div>
+  );
+
+  const renderDashboard=()=>(
+    <div className="p-5 grid gap-4" style={{gridTemplateColumns:r?"1fr 340px":"1fr"}}>
+      <div className="space-y-4">
+        {!r&&!loading&&renderUploadZone()}
+        {loading&&(
+          <div className="rounded-xl p-8 flex flex-col items-center justify-center min-h-[350px]" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            {preview&&<img src={preview} className="w-40 h-40 rounded-xl object-cover mb-6 opacity-60"/>}
+            <div className="w-full max-w-md">{steps.map((s,i)=>(
+              <div key={i} className={`flex items-center gap-3 py-2 text-sm ${i<=step?"text-purple-300":"text-slate-600"}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i<step?"bg-purple-600 text-white":i===step?"bg-purple-600/40 text-purple-300 animate-pulse":"bg-slate-800 text-slate-600"}`}>{i<step?"?":i+1}</div>{s}
+              </div>))}</div>
+          </div>)}
+        {r&&(<>
+          <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="grid grid-cols-2 gap-4">
+              <div><div className="text-sm text-slate-400 mb-2 text-center">Original retinal image</div><img src={`data:image/png;base64,${r.original_b64}`} className="w-full rounded-lg"/></div>
+              <div><div className="text-sm text-slate-400 mb-2 text-center">Grad-CAM heatmap (AI focus)</div>
+                <div className="relative"><img src={`data:image/png;base64,${r.original_b64}`} className="w-full rounded-lg"/><img src={`data:image/png;base64,${r.heatmap_b64}`} className="w-full rounded-lg absolute inset-0" style={{opacity:heatmapOpacity/100}}/></div></div>
+            </div>
+            <div className="flex items-center gap-3 mt-3 px-2"><span className="text-xs text-slate-400">Heatmap</span><input type="range" min={0} max={100} value={heatmapOpacity} onChange={e=>setHeatmapOpacity(Number(e.target.value))} className="flex-1 accent-purple-500"/><span className="text-xs text-slate-400 w-10 text-right">{heatmapOpacity}%</span></div>
+            <div className="flex justify-center gap-6 mt-2 text-xs text-slate-400">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500 inline-block"/> High influence</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-500 inline-block"/> Moderate</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500 inline-block"/> Low</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <LesionPanel tcav={r.tcav_scores}/>
+            <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+              <div className="text-sm font-medium mb-3">TCAV concept scores</div>
+              {tcavData.map(t=>(<div key={t.name} className="mb-2">
+                <div className="flex justify-between text-xs mb-1"><span className="text-slate-300">{t.name} impact</span><span className="text-slate-200 font-medium">{t.value}</span></div>
+                <div className="h-2 rounded-full bg-slate-800"><div className="h-full rounded-full bg-purple-500 transition-all" style={{width:`${t.value*100}%`}}/></div>
+              </div>))}
+            </div>
+          </div>
+          <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="text-sm font-medium mb-3">Grade probability distribution</div>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={probData}><XAxis dataKey="name" tick={{fill:"#94a3b8",fontSize:11}}/><YAxis tick={{fill:"#94a3b8",fontSize:11}} domain={[0,100]}/>
+                <Tooltip contentStyle={{background:"#1e293b",border:"none",borderRadius:8,fontSize:12}}/>
+                <Bar dataKey="value" radius={[4,4,0,0]}>{probData.map((d,i)=><Cell key={i} fill={d.grade===r.grade?GRADE_COLORS[r.grade]:"#334155"}/>)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>)}
+      </div>
+      {r&&(
+        <div className="space-y-4">
+          {/* DR Diagnosis */}
+          <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">Diagnosis summary</div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{background:"#1e293b"}}><Activity size={20} className="text-slate-300"/></div>
+              <div><div className="text-xs text-slate-400">Diabetic Retinopathy (DR)</div><div className="text-xl font-bold" style={{color:GRADE_COLORS[r.grade]}}>Grade {r.grade}</div></div>
+              <span className="ml-auto text-[10px] px-2 py-1 rounded-full font-medium" style={{background:GRADE_COLORS[r.grade]+"20",color:GRADE_COLORS[r.grade]}}>{r.dr_type||"NPDR"}</span>
+            </div>
+            <div className="flex justify-between items-center mt-2"><span className="text-xs text-slate-400">Confidence</span><span className="text-xl font-bold" style={{color:GRADE_COLORS[r.grade]}}>{(r.confidence*100).toFixed(1)}%</span></div>
+            <div className="h-1.5 rounded-full bg-slate-800 mt-1"><div className="h-full rounded-full" style={{width:`${r.confidence*100}%`,background:GRADE_COLORS[r.grade]}}/></div>
+          </div>
+
+          {/* DME Detection */}
+          <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{background:"#1e293b"}}><Droplets size={20} className="text-blue-400"/></div>
+              <div>
+                <div className="text-xs text-slate-400">Diabetic Macular Edema (DME)</div>
+                <div className={`text-xl font-bold ${r.dme_detected?"text-red-400":"text-green-400"}`}>{r.dme_detected?"Detected":"Not detected"}</div>
+              </div>
+              <span className={`ml-auto text-[10px] px-2 py-1 rounded-full font-medium ${r.dme_detected?"bg-red-500/20 text-red-400":"bg-green-500/20 text-green-400"}`}>{r.dme_detected?"Present":"Absent"}</span>
+            </div>
+            {r.dme_detected&&<div className="flex justify-between items-center mt-3"><span className="text-xs text-slate-400">Confidence</span><span className="text-lg font-bold text-red-400">{r.dme_confidence}%</span></div>}
+          </div>
+
+          {/* Early Detection Alert */}
+          {r.early_detection&&(
+            <div className="rounded-xl p-3 flex items-center gap-3" style={{background:"#f59e0b15",border:"1px solid #f59e0b40"}}>
+              <AlertTriangle size={20} className="text-amber-400"/>
+              <div><div className="text-sm font-medium text-amber-300">Early detection alert</div><div className="text-xs text-amber-400/70">Mild DR detected ? early intervention can prevent blindness</div></div>
+            </div>
+          )}
+
+          {/* Risk Assessment */}
+          <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="text-sm font-medium mb-2">Risk assessment</div>
+            <span className="text-xs px-3 py-1 rounded-full font-medium" style={{background:RISK_COLORS[r.risk_level]+"20",color:RISK_COLORS[r.risk_level]}}>{r.risk_level}</span>
+            <div className="text-xs text-slate-400 leading-relaxed mt-3">{r.recommendation}</div>
+          </div>
+
+          {/* AI Explanation */}
+          <div className="rounded-xl p-4" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="text-sm font-medium mb-2 flex items-center gap-2"><Zap size={14} className="text-purple-400"/> AI explanation (XAI)</div>
+            <div className="text-xs text-slate-500 mb-2">Reason for prediction:</div>
+            <div className="text-xs text-slate-400 leading-relaxed space-y-1.5">
+              {Object.entries(r.tcav_scores).map(([concept,score])=>(
+                <div key={concept} className="flex items-start gap-2"><CheckCircle size={12} className="text-green-400 mt-0.5 shrink-0"/>
+                  <span>{concept.charAt(0).toUpperCase()+concept.slice(1)} pattern {Number(score)>0.7?"strongly detected":Number(score)>0.4?"moderately detected":"weakly detected"} (score: {Number(score).toFixed(2)})</span>
+                </div>))}
+              {r.dme_detected&&<div className="flex items-start gap-2"><CheckCircle size={12} className="text-green-400 mt-0.5 shrink-0"/><span>Macular swelling indicators suggest presence of DME</span></div>}
+              <div className="flex items-start gap-2"><CheckCircle size={12} className="text-green-400 mt-0.5 shrink-0"/><span>Overall lesion pattern matches {r.grade_label} profile</span></div>
+            </div>
+          </div>
+
+          <div className="rounded-xl p-3 text-xs text-slate-500" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="flex justify-between"><span>Model</span><span className="text-slate-300">{r.model_type==="hybrid"?"ViT + VQC (Quantum)":"ViT Only"}</span></div>
+            <div className="flex justify-between mt-1"><span>Inference</span><span className="text-slate-300">{r.inference_time}s</span></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderReports=()=>(<div className="p-5 space-y-4"><h2 className="text-lg font-semibold mb-4">Scan history</h2>
+    <p className="text-xs text-slate-400 mb-2">Click any scan to view full results</p>
+    {scanHistory.length===0?<div className="text-sm text-slate-400 rounded-xl p-8 text-center" style={{background:"#0f1729",border:"1px solid #1e293b"}}>No scans yet. Upload a retinal image to get started.</div>
+    :<div className="space-y-2">{scanHistory.map((scan,i)=>(
+      <div key={i} onClick={()=>{setSelectedScan(scan);setResult(scan);setPage("dashboard")}} className="rounded-xl p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+        <div className="flex items-center gap-4"><img src={`data:image/png;base64,${scan.original_b64}`} className="w-14 h-14 rounded-lg object-cover"/>
+          <div><div className="text-sm font-medium" style={{color:GRADE_COLORS[scan.grade]}}>{scan.grade_label}{scan.dme_detected?" + DME":""}</div>
+            <div className="text-xs text-slate-400">Confidence: {(scan.confidence*100).toFixed(1)}% | {scan.model_type==="hybrid"?"Quantum":"Classical"}</div></div></div>
+        <div className="text-xs text-slate-500">{scan.inference_time}s</div>
+      </div>))}</div>}</div>);
+
+  const renderExplainability=()=>(<div className="p-5 space-y-4"><h2 className="text-lg font-semibold mb-2">How the AI explains its diagnosis</h2>
+    <p className="text-sm text-slate-400 mb-4">QuantumRetina-X uses two methods so doctors can trust the AI:</p>
+    <div className="grid grid-cols-2 gap-4">
+      <Card title="Grad-CAM ? WHERE the AI looked" icon={<Eye size={14} className="text-red-400"/>}>
+        <p className="text-xs text-slate-400 leading-relaxed mb-3">Creates a heatmap overlaid on the retina. Red = AI focused here. Blue = AI ignored this region. For diseased eyes, red should land on lesions.</p>
+        <p className="text-xs text-purple-300">Upload an image to see live Grad-CAM heatmaps.</p>
+      </Card>
+      <Card title="TCAV ? WHY the AI chose that grade" icon={<Brain size={14} className="text-purple-400"/>}>
+        <p className="text-xs text-slate-400 leading-relaxed mb-3">Measures which clinical concepts drove the diagnosis:</p>
+        <div className="space-y-1 text-xs mb-3">
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-400"/>Hemorrhage ? blood leaking from vessels</div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400"/>Exudate ? fatty deposits</div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400"/>Edema ? fluid swelling (also indicates DME)</div>
+        </div>
+        <div className="text-xs font-medium text-slate-300 mb-2">Scores increase with severity:</div>
+        {Object.entries(TCAV_REF).map(([concept,scores])=>(<div key={concept} className="mb-3">
+          <div className="text-xs text-slate-400 mb-1 capitalize">{concept}</div>
+          <div className="flex gap-1">{Object.entries(scores).map(([g,s])=>(
+            <div key={g} className="flex-1 text-center"><div className="h-12 rounded relative bg-slate-800 flex items-end"><div className="w-full rounded" style={{height:`${Number(s)*100}%`,background:Number(s)>0.5?"#8b5cf6":"#334155"}}/></div><span className="text-[10px] text-slate-500">G{g}</span></div>
+          ))}</div></div>))}
+      </Card>
+    </div></div>);
+
+  const renderInsights=()=>(<div className="p-5 space-y-4"><h2 className="text-lg font-semibold mb-2">Model performance</h2>
+    <div className="grid grid-cols-4 gap-4">
+      <StatBox label="Best accuracy" value="81.6%" sub="ViT+VQC on APTOS" color="#8b5cf6"/>
+      <StatBox label="Best kappa" value="0.881" sub="ViT baseline" color="#3b82f6"/>
+      <StatBox label="G1-sensitivity" value="78.6%" sub="Early detection" color="#f59e0b"/>
+      <StatBox label="Datasets" value="4" sub="3 countries" color="#10b981"/>
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      <Card title="Ablation study" icon={<Activity size={14} className="text-purple-400"/>}>
+        {ABLATION.map(row=>(<div key={row.config} className="rounded-lg p-3 flex items-center justify-between mb-2" style={{background:"#0a0f1a"}}>
+          <span className="text-xs font-medium" style={{color:row.color}}>{row.config}</span>
+          <div className="flex gap-4 text-xs"><span className="text-slate-400">Acc: <span className="text-slate-200">{row.accuracy}%</span></span><span className="text-slate-400">?: <span className="text-slate-200">{row.kappa}</span></span><span className="text-slate-400">G1: <span className="text-slate-200">{row.g1}%</span></span></div>
+        </div>))}</Card>
+      <Card title="Cross-dataset generalisation" icon={<Shield size={14} className="text-purple-400"/>}>
+        {CROSS_DATASET.map(row=>(<div key={row.dataset} className="rounded-lg p-3 mb-2" style={{background:"#0a0f1a"}}>
+          <div className="flex items-center justify-between mb-1"><span className="text-xs font-medium text-slate-300">{row.dataset}</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full ${row.role==="Trained"?"bg-purple-500/20 text-purple-300":"bg-slate-700 text-slate-400"}`}>{row.role}</span></div>
+          <div className="flex gap-3 text-xs"><span className="text-blue-400">ViT:{row.vit_acc}%</span><span className="text-purple-400">VQC:{row.vqc_acc}%</span><span className="text-amber-400">G1:{row.vqc_g1}%</span></div>
+        </div>))}</Card>
+    </div></div>);
+
+  const renderSettings=()=>(<div className="p-5 space-y-4"><h2 className="text-lg font-semibold mb-4">Settings</h2>
+    <Card title="Model configuration" icon={<Settings size={14} className="text-purple-400"/>}>
+      <div className="space-y-4">
+        <div><label className="text-xs text-slate-400 block mb-1">Default model</label>
+          <select value={modelType} onChange={e=>setModelType(e.target.value as any)} className="bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-600 w-full">
+            <option value="hybrid">ViT + VQC (Quantum)</option><option value="vit">ViT Only (Classical)</option></select></div>
+        <div><label className="text-xs text-slate-400 block mb-1">Heatmap opacity</label>
+          <input type="range" min={0} max={100} value={heatmapOpacity} onChange={e=>setHeatmapOpacity(Number(e.target.value))} className="w-full accent-purple-500"/><span className="text-xs text-slate-500">{heatmapOpacity}%</span></div>
+      </div></Card>
+    <Card title="System information" icon={<Info size={14} className="text-purple-400"/>}>
+      <div className="space-y-2 text-xs">{[["Backend","FastAPI + PyTorch + CUDA"],["Backbone","ViT-Base/16"],["Quantum","4-qubit VQC (PennyLane)"],["XAI","Grad-CAM + TCAV"],["Detection","DR (5-grade) + DME"],["Training","APTOS 2019"],["Validation","Messidor, IDRiD, EyePACS"]].map(([k,v])=>(
+        <div key={k} className="flex justify-between text-slate-400"><span>{k}</span><span className="text-slate-200">{v}</span></div>))}</div></Card></div>);
+
+  const renderAbout=()=>(<div className="p-5 space-y-4"><h2 className="text-lg font-semibold mb-4">About QuantumRetina-X</h2>
+    <Card title="Project overview" icon={<Zap size={14} className="text-purple-400"/>}>
+      <p className="text-sm text-slate-300 leading-relaxed mb-3">QuantumRetina-X is an explainable hybrid quantum-classical Vision Transformer for <strong className="text-purple-300">early detection</strong> of Diabetic Retinopathy (DR) and Diabetic Macular Edema (DME).</p>
+      <p className="text-sm text-slate-400 leading-relaxed">It combines ViT with a 4-qubit VQC in a 16D Hilbert space, plus dual XAI (Grad-CAM + TCAV) for clinically interpretable diagnostics.</p></Card>
+    <Card title="6 research contributions" icon={<CheckCircle size={14} className="text-green-400"/>}>
+      <div className="space-y-2 text-xs text-slate-400">{["First ViT + VQC for DR and DME early detection","Quantum latent space for micro-lesion detection","Dual XAI (Grad-CAM + TCAV) in quantum medical model","Four-dataset cross-validation (3 countries)","Low-data quantum learning analysis","IoMT-ready lightweight architecture"].map((c,i)=>(
+        <div key={i} className="flex items-start gap-2"><span className="text-purple-400 font-bold">{i+1}.</span><span>{c}</span></div>))}</div></Card>
+    <div className="text-center text-xs text-slate-600 mt-6">QuantumRetina-X v1.0 ? 2026</div></div>);
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      <div className="w-[200px] flex flex-col justify-between py-4 px-3" style={{background:"#0c1221",borderRight:"1px solid #1e293b"}}>
+        <div>
+          <div className="flex items-center gap-2 px-2 mb-8"><Zap size={22} className="text-purple-400"/><span className="text-lg font-semibold">Quantum<span className="text-purple-400">Retina-X</span></span></div>
+          {SIDEBAR.map(item=>(<div key={item.label} onClick={()=>{setPage(item.page);setSelectedScan(null)}}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 cursor-pointer text-sm transition ${page===item.page?"bg-purple-600/20 text-purple-300":"text-slate-400 hover:bg-white/5"}`}>
+            <item.icon size={18}/>{item.label}</div>))}
+        </div>
+        <div>
+          <div className="flex items-center gap-3 px-3 py-2 mb-3 rounded-lg" style={{background:"#0a0f1a"}}>
+            <div className="w-8 h-8 rounded-full bg-purple-600/30 flex items-center justify-center"><User size={16} className="text-purple-300"/></div>
+            <div><div className="text-xs font-medium text-slate-200">Dr. Admin</div><div className="text-[10px] text-slate-500">Ophthalmologist</div></div>
+            <ChevronDown size={14} className="text-slate-500 ml-auto"/></div>
+          <div className="p-3 rounded-xl" style={{background:"linear-gradient(135deg,#1a1040,#0c1a3a)"}}>
+            <div className="flex items-center gap-2 mb-1"><Zap size={14} className="text-purple-400"/><span className="text-sm font-medium">Quantum + AI</span></div>
+            <p className="text-xs text-slate-400 leading-relaxed">Smarter. Earlier. Explainable.<br/>Better Vision for All.</p></div>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-3" style={{background:"#0c1221",borderBottom:"1px solid #1e293b"}}>
+          <div className="flex items-center gap-3"><CheckCircle size={20} className="text-purple-400"/><div><div className="text-base font-semibold">Analysis Results</div><div className="text-xs text-slate-400">AI-powered retinal image analysis with explainability</div></div></div>
+          <div className="flex items-center gap-6 text-xs text-slate-400">
+            <div><div className="text-slate-500">Scan Date</div><div className="text-slate-200">{new Date().toLocaleDateString()}</div></div>
+            <div><div className="text-slate-500">Model</div><div className="text-slate-200">QuantumRetina-X v1.0</div></div>
+            <select value={modelType} onChange={e=>setModelType(e.target.value as any)} className="bg-slate-800 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-600">
+              <option value="hybrid">ViT + VQC (Quantum)</option><option value="vit">ViT Only</option></select></div>
+        </div>
+        {page==="dashboard"&&renderDashboard()}
+        {page==="upload"&&<div className="p-5"><h2 className="text-lg font-semibold mb-4">Upload retinal image</h2>{renderUploadZone()}</div>}
+        {page==="reports"&&renderReports()}
+        {page==="explainability"&&renderExplainability()}
+        {page==="insights"&&renderInsights()}
+        {page==="settings"&&renderSettings()}
+        {page==="about"&&renderAbout()}
+        {r&&page==="dashboard"&&(
+          <div className="mx-5 mb-4 rounded-xl p-4 flex items-center justify-between" style={{background:"#0f1729",border:"1px solid #1e293b"}}>
+            <div className="flex items-center gap-8">
+              <div><div className="text-xs text-slate-500">Prediction</div><div className="text-sm font-semibold" style={{color:GRADE_COLORS[r.grade]}}>{r.grade_label}{r.dme_detected?" + DME":""}</div></div>
+              <div><div className="text-xs text-slate-500">Confidence</div><div className="text-sm font-semibold text-white">{(r.confidence*100).toFixed(1)}%</div></div>
+              <div><div className="text-xs text-slate-500">Status</div><div className="text-sm font-medium text-amber-400 flex items-center gap-1"><AlertTriangle size={12}/> Requires clinical review</div></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>{setResult(null);setSelectedScan(null);setPreview(null)}} className="px-4 py-2 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition">New scan</button>
+              <button onClick={downloadHeatmap} className="px-4 py-2 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1"><Download size={14}/> Heatmap</button>
+              <button onClick={downloadReport} className="px-4 py-2 text-xs rounded-lg bg-purple-600 hover:bg-purple-500 transition flex items-center gap-1"><FileText size={14}/> Report</button>
+            </div>
+          </div>)}
+        {error&&<div className="mx-5 mb-4 rounded-xl p-4 text-red-400 text-sm" style={{background:"#1a0505",border:"1px solid #7f1d1d"}}>Error: {error}</div>}
+      </div>
+    </div>
+  );
+}

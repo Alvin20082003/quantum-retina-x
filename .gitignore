@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.so
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model weights (large binary files — store separately e.g. HuggingFace Hub)
+weights/*.pth
+weights/*.pt
+weights/*.ckpt
+
+# Large datasets and raw images (too large for GitHub)
+data/archive/
+data/**/*.png
+data/**/*.jpg
+data/**/*.jpeg
+
+# Experiment outputs / logs
+experiments/results/
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.*
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/

@@ -1,0 +1,7 @@
+@import "tailwindcss";
+:root { font-family: "Inter", sans-serif; }
+body { margin: 0; background: #080c14; color: #e2e8f0; min-height: 100vh; }
+* { box-sizing: border-box; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0f1520; }
+::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }

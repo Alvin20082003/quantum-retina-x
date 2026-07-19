@@ -1,0 +1,34 @@
+seed: 42
+
+data:
+  image_size: 224
+  num_classes: 5
+  imagenet_mean: [0.485, 0.456, 0.406]
+  imagenet_std:  [0.229, 0.224, 0.225]
+  paths:
+    messidor: ""
+    eyepacs:  ""
+    aptos:    ""
+    idrid:    ""
+
+train:
+  batch_size: 8
+  epochs: 20
+  lr_backbone: 3.0e-5
+  lr_head: 1.0e-3
+  weight_decay: 1.0e-4
+  drop_last: true
+  class_imbalance: weighted_loss
+  num_workers: 2
+  num_workers: 2
+  num_workers: 2
+
+quantum:
+  n_qubits: 4
+  n_layers: 2
+  sim_device: lightning.qubit
+  init_std: 0.01
+
+paths:
+  results_dir: experiments/results
+  weights_dir: weights
