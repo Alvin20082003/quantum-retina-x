@@ -1,7 +1,52 @@
 ﻿@import "tailwindcss";
-:root { font-family: "Inter", sans-serif; }
-body { margin: 0; background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+:root { font-family: 'Inter', sans-serif; }
+body { margin: 0; background: #070711; color: #fff; min-height: 100vh; }
 * { box-sizing: border-box; }
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-track { background: #0a0a1a; }
+::-webkit-scrollbar-thumb { background: #7c3aed; border-radius: 3px; }
+
+/* ---- Responsive ---- */
+
+/* Sidebar collapses to icons only below 900px */
+@media (max-width: 900px) {
+  .ql-sidebar { width: 56px !important; }
+  .ql-sidebar .ql-sidebar-label { display: none; }
+  .ql-sidebar .ql-logo-text  { display: none; }
+  .ql-sidebar .ql-brand-card { display: none; }
+  .ql-sidebar .ql-user-info  { display: none; }
+}
+
+/* Stack dashboard grid below 768px */
+@media (max-width: 768px) {
+  .ql-dashboard-grid { grid-template-columns: 1fr !important; }
+  .ql-pipeline-row   { flex-direction: column !important; }
+  .ql-stats-grid     { grid-template-columns: repeat(2,1fr) !important; }
+  .ql-cross-grid     { grid-template-columns: repeat(2,1fr) !important; }
+  .ql-features-grid  { grid-template-columns: 1fr !important; }
+  .ql-twin-grid      { grid-template-columns: 1fr !important; }
+  .ql-twin-layers    { flex-direction: row !important; flex-wrap: wrap !important; }
+}
+
+/* Landing page responsive */
+@media (max-width: 1024px) {
+  .ql-hero-grid  { grid-template-columns: 1fr !important; }
+  .ql-eye-wrap   { max-width: 280px !important; margin: 0 auto !important; }
+}
+@media (max-width: 768px) {
+  .ql-hero-grid      { padding: 60px 20px !important; }
+  .ql-nav-links      { display: none !important; }
+  .ql-nav-mobile-cta { display: flex !important; }
+  .ql-stats-3col     { grid-template-columns: 1fr !important; }
+  .ql-features-3col  { grid-template-columns: 1fr !important; }
+  .ql-pipeline-4col  { grid-template-columns: repeat(2,1fr) !important; }
+  .ql-papers-2col    { grid-template-columns: 1fr !important; }
+  .ql-trust-row      { gap: 24px !important; }
+  .ql-footer-row     { flex-direction: column !important; align-items: flex-start !important; }
+  .ql-cta-section    { padding: 72px 20px !important; }
+}
+@media (max-width: 480px) {
+  .ql-pipeline-4col  { grid-template-columns: 1fr !important; }
+  .ql-cross-4col     { grid-template-columns: repeat(2,1fr) !important; }
+  .ql-counter-3col   { grid-template-columns: 1fr !important; }
+}
