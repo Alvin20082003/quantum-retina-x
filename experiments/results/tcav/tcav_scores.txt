@@ -1,24 +1,31 @@
 TCAV Concept Scores by DR Grade
 ==================================================
 
+MICROANEURYSM:
+  Grade 0 (Healthy): 0.000
+  Grade 1 (Mild (Early)): 0.000
+  Grade 2 (Moderate): 0.733
+  Grade 3 (Severe): 1.000
+  Grade 4 (Proliferative): 0.967
+
 HEMORRHAGE:
   Grade 0 (Healthy): 0.000
-  Grade 1 (Mild (Early)): 0.200
-  Grade 2 (Moderate): 0.900
+  Grade 1 (Mild (Early)): 0.000
+  Grade 2 (Moderate): 0.600
   Grade 3 (Severe): 1.000
-  Grade 4 (Proliferative): 1.000
+  Grade 4 (Proliferative): 0.900
 
 EXUDATE:
   Grade 0 (Healthy): 0.000
-  Grade 1 (Mild (Early)): 0.667
-  Grade 2 (Moderate): 1.000
-  Grade 3 (Severe): 1.000
-  Grade 4 (Proliferative): 1.000
+  Grade 1 (Mild (Early)): 0.000
+  Grade 2 (Moderate): 0.500
+  Grade 3 (Severe): 0.967
+  Grade 4 (Proliferative): 0.833
 
 EDEMA:
   Grade 0 (Healthy): 0.000
-  Grade 1 (Mild (Early)): 0.700
-  Grade 2 (Moderate): 1.000
+  Grade 1 (Mild (Early)): 0.000
+  Grade 2 (Moderate): 0.733
   Grade 3 (Severe): 1.000
-  Grade 4 (Proliferative): 1.000
+  Grade 4 (Proliferative): 0.933
 

@@ -49,3 +49,20 @@ Thumbs.db
 frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
+
+# Multiseed checkpoints (large .pth files, not needed in repo)
+experiments/results/multiseed_checkpoints/*.pth
+
+# Temp helper scripts
+gen_readme.py
+write_readme.py
+
+# Word temp lock files
+paper/~$*.docx
+paper/~$*.xlsx
+
+# Paper drafts (keep only final)
+paper/unwanted/
+
+# Claude settings
+.claude/

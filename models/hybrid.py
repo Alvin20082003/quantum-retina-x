@@ -6,9 +6,9 @@ from .quantum import QuantumLayer
 class QuantumRetinaX(nn.Module):
     """ViT (frozen, pretrained Phase 2) -> reducer -> VQC -> classifier."""
 
-    def __init__(self, cfg, vit_weights_path="weights/vit_baseline.pth"):
+    def __init__(self, cfg, vit_weights_path="weights/vit_baseline.pth", num_classes=None):
         super().__init__()
-        nc = cfg["data"]["num_classes"]
+        nc = num_classes or cfg["data"]["num_classes"]
         nq = cfg["quantum"]["n_qubits"]
         nl = cfg["quantum"]["n_layers"]
         std = cfg["quantum"]["init_std"]
@@ -41,9 +41,13 @@ class QuantumRetinaX(nn.Module):
         print(f"[hybrid] trainable params: {trainable} (reducer + VQC + head)")
 
     def forward(self, x, return_features=False):
-        with torch.no_grad():
-            out = self.backbone(pixel_values=x)
-            cls_token = out.last_hidden_state[:, 0]
+        # No torch.no_grad() here: the backbone's own params are frozen
+        # (requires_grad=False above) so they never get optimizer updates
+        # either way, but keeping the graph connected lets Grad-CAM compute
+        # gradients at backbone layers when the caller marks x as requiring
+        # grad (e.g. backend/main.py's explainability path).
+        out = self.backbone(pixel_values=x)
+        cls_token = out.last_hidden_state[:, 0]
         reduced = self.reducer(cls_token)
         quantum_out = self.vqc(reduced)
         logits = self.head(quantum_out)

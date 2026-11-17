@@ -1,0 +1,14 @@
+Grad-CAM Faithfulness Validation vs IDRiD Expert Lesion Masks
+============================================================
+
+Images evaluated: 81
+Mean IoU:       0.035
+Mean Recall:    0.126  (fraction of real lesion area the heatmap covers)
+Mean Precision: 0.054  (fraction of highlighted area that is real lesion)
+
+By predicted grade:
+  Grade 0 (n=1): IoU=0.008 Recall=0.189 Precision=0.008
+  Grade 1 (n=9): IoU=0.002 Recall=0.059 Precision=0.002
+  Grade 2 (n=48): IoU=0.018 Recall=0.106 Precision=0.024
+  Grade 3 (n=19): IoU=0.093 Recall=0.216 Precision=0.156
+  Grade 4 (n=4): IoU=0.034 Recall=0.084 Precision=0.052

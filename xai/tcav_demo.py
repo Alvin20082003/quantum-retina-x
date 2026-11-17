@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import json
+import pickle
+import cv2
 from PIL import Image
 from pathlib import Path
 from collections import defaultdict
@@ -25,18 +27,109 @@ def extract_features(model, images, device):
             features.append(cls[0])
     return np.array(features)
 
-def load_concept_patches(root, concept_name, transform, n=50):
-    """Load concept patches from data folders."""
-    patches = []
-    concept_dir = Path(root) / concept_name
-    if concept_dir.exists():
-        for p in sorted(concept_dir.glob("*"))[:n]:
-            try:
-                img = Image.open(p).convert("RGB")
-                patches.append(transform(img))
-            except Exception:
-                continue
-    return patches
+# Color coding of the IDRiD "Combined Masks" (empirically determined, since
+# this repackaged combined-mask format has no published legend): magenta is
+# present in every single image at a consistent size -> optic disc (always
+# present, not a lesion). Yellow is rare -> soft exudates (a genuinely rare
+# lesion type). Of the remaining two, blue has far more numerous, smaller
+# blobs -> microaneurysms; green has fewer but much larger, irregular blobs
+# -> haemorrhages. That leaves red -> hard exudates.
+IDRID_COLORS = {
+    "microaneurysm": (0, 0, 255),
+    "hemorrhage": (0, 255, 0),
+    "exudate": (255, 0, 0),
+    "soft_exudate": (255, 255, 0),
+    "optic_disc": (255, 0, 255),
+}
+
+def _blob_centroids(mask_arr, color, min_area=10):
+    m = np.all(mask_arr == np.array(color), axis=-1).astype(np.uint8)
+    if m.sum() == 0:
+        return []
+    n, _, cstats, centroids = cv2.connectedComponentsWithStats(m, connectivity=8)
+    return [tuple(centroids[i]) for i in range(1, n) if cstats[i, cv2.CC_STAT_AREA] >= min_area]
+
+def extract_idrid_concept_patches(seg_root, transform, patch_size=640, n_per_concept=60, seed=42):
+    """Real concept patches cropped from IDRiD's pixel-level lesion masks,
+    instead of whole APTOS images bucketed by DR grade.
+
+    - "microaneurysm" and "hemorrhage" are separate concepts (each from its
+      own mask color), not pooled together, so each gets its own
+      independently-verifiable detector.
+    - "exudate" concept = hard + soft exudate blobs ("bright lesions")
+    - "edema" concept: IDRiD has no direct macular-edema segmentation, but
+      DME risk is clinically graded by hard-exudate proximity to the
+      macula, so this uses hard-exudate blobs near the image center as a
+      real, clinically-grounded proxy instead of a whole-image grade guess.
+    - "healthy" = random crops containing no lesion/disc pixels and with
+      real (non-black-background) tissue brightness.
+    """
+    rng = np.random.RandomState(seed)
+    pairs = []
+    for split in ["DR_Training_Set", "DR_Testing_Set"]:
+        img_dir = Path(seg_root) / split / "Fundus Images"
+        mask_dir = Path(seg_root) / split / "Combined Masks"
+        for img_path in sorted(img_dir.glob("*.jpg")):
+            mask_path = mask_dir / f"{img_path.stem}.png"
+            if mask_path.exists():
+                pairs.append((img_path, mask_path))
+
+    buckets = {"microaneurysm": [], "hemorrhage": [], "exudate": [], "edema": [], "healthy": []}
+
+    for img_path, mask_path in pairs:
+        fundus_probe = Image.open(img_path).convert("RGB")
+        mask_arr = np.array(Image.open(mask_path).convert("RGB"))
+        gray = np.array(fundus_probe.convert("L"))
+        w, h = fundus_probe.size
+        cx, cy = w / 2, h / 2
+        center_r = 0.35 * min(w, h)
+        any_mark = mask_arr.any(axis=-1)
+
+        ma = _blob_centroids(mask_arr, IDRID_COLORS["microaneurysm"])
+        for c in ma:
+            buckets["microaneurysm"].append((img_path, c))
+        he = _blob_centroids(mask_arr, IDRID_COLORS["hemorrhage"])
+        for c in he:
+            buckets["hemorrhage"].append((img_path, c))
+
+        ex = _blob_centroids(mask_arr, IDRID_COLORS["exudate"])
+        se = _blob_centroids(mask_arr, IDRID_COLORS["soft_exudate"])
+        for c in ex + se:
+            buckets["exudate"].append((img_path, c))
+        for c in ex:
+            if np.hypot(c[0] - cx, c[1] - cy) <= center_r:
+                buckets["edema"].append((img_path, c))
+
+        found = tries = 0
+        while found < 5 and tries < 30:
+            tries += 1
+            ry = rng.randint(patch_size, h - patch_size)
+            rx = rng.randint(patch_size, w - patch_size)
+            region = any_mark[ry - patch_size//2:ry + patch_size//2, rx - patch_size//2:rx + patch_size//2]
+            bright = gray[ry - patch_size//2:ry + patch_size//2, rx - patch_size//2:rx + patch_size//2]
+            if not region.any() and bright.mean() > 40:
+                buckets["healthy"].append((img_path, (rx, ry)))
+                found += 1
+
+    print("  concept pool sizes: " + ", ".join(f"{k}={len(v)}" for k, v in buckets.items()))
+
+    def to_patches(items, n):
+        idxs = rng.permutation(len(items))[:n]
+        patches = []
+        cache = {}
+        for i in idxs:
+            img_path, (px, py) = items[i]
+            if img_path not in cache:
+                cache[img_path] = Image.open(img_path).convert("RGB")
+            fundus = cache[img_path]
+            fw, fh = fundus.size
+            left = int(np.clip(px - patch_size/2, 0, fw - patch_size))
+            top = int(np.clip(py - patch_size/2, 0, fh - patch_size))
+            crop = fundus.crop((left, top, left + patch_size, top + patch_size))
+            patches.append(transform(crop))
+        return patches
+
+    return {k: to_patches(v, n_per_concept) for k, v in buckets.items()}
 
 def main():
     cfg = load_config(); set_seed(cfg["seed"])
@@ -50,13 +143,20 @@ def main():
     out = "experiments/results"
     Path(f"{out}/tcav").mkdir(parents=True, exist_ok=True)
 
-    # Since IDRiD pixel masks need careful extraction, we simulate concept
-    # patches from the APTOS dataset using grade-based proxies:
-    # - "hemorrhage" concept: patches from Grade 3-4 (severe, lots of hemorrhage)
-    # - "exudate" concept: patches from Grade 2-3 (moderate-severe, hard exudates)
-    # - "edema" concept: patches from Grade 2-4 (DME-associated)
-    # - "healthy" concept: patches from Grade 0 (negative examples)
+    # Real concept patches cropped from IDRiD's pixel-level lesion masks
+    # (data/idrid/segmentation/) instead of whole APTOS images bucketed by
+    # DR grade. See extract_idrid_concept_patches() for the lesion-type ->
+    # concept mapping and reasoning.
+    print("Extracting real lesion patches from IDRiD segmentation masks...")
+    concept_patches = extract_idrid_concept_patches("data/idrid/segmentation", transform)
 
+    neg_images = concept_patches["healthy"]
+    print(f"Negative (healthy) patches: {len(neg_images)}")
+    neg_features = extract_features(model, neg_images, device)
+    print(f"Negative features shape: {neg_features.shape}")
+
+    # Still use APTOS (grade-labelled, no pixel masks) to see how each
+    # concept's presence trends across DR severity for the summary charts.
     import pandas as pd
     root = Path("data/archive")
     df = pd.read_csv(root / "train.csv")
@@ -65,38 +165,11 @@ def main():
         if p.suffix.lower() in [".png", ".jpg", ".jpeg"]:
             idx[p.stem] = p
 
-    concepts = {
-        "hemorrhage": {"grades": [3, 4], "description": "Severe lesions with hemorrhage"},
-        "exudate":    {"grades": [2, 3], "description": "Hard exudate deposits"},
-        "edema":      {"grades": [2, 3, 4], "description": "Macular edema indicators"},
-    }
-    negative_grades = [0]
-
-    # Collect positive and negative patches
-    n_samples = 60
-    neg_rows = df[df["diagnosis"].isin(negative_grades)].sample(n=n_samples, random_state=42)
-    neg_images = []
-    for _, row in neg_rows.iterrows():
-        if row["id_code"] in idx:
-            img = Image.open(idx[row["id_code"]]).convert("RGB")
-            neg_images.append(transform(img))
-
-    print(f"Negative (healthy) patches: {len(neg_images)}")
-    neg_features = extract_features(model, neg_images, device)
-    print(f"Negative features shape: {neg_features.shape}")
-
     tcav_results = {}
 
-    for concept_name, concept_info in concepts.items():
+    for concept_name in ["microaneurysm", "hemorrhage", "exudate", "edema"]:
         print(f"\n--- Concept: {concept_name} ---")
-        pos_rows = df[df["diagnosis"].isin(concept_info["grades"])].sample(
-            n=n_samples, random_state=42)
-        pos_images = []
-        for _, row in pos_rows.iterrows():
-            if row["id_code"] in idx:
-                img = Image.open(idx[row["id_code"]]).convert("RGB")
-                pos_images.append(transform(img))
-
+        pos_images = concept_patches[concept_name]
         print(f"  Positive patches: {len(pos_images)}")
         pos_features = extract_features(model, pos_images, device)
 
@@ -107,6 +180,14 @@ def main():
         probe.fit(X, y)
         probe_acc = probe.score(X, y)
         print(f"  Probe accuracy: {probe_acc:.3f}")
+
+        # Save the trained probe so the backend can score new images live
+        # (predict_proba on that image's own features) instead of relying
+        # on this offline, grade-bucketed table.
+        probe_path = Path(f"{out}/tcav/probe_{concept_name}.pkl")
+        with open(probe_path, "wb") as pf:
+            pickle.dump(probe, pf)
+        print(f"  saved {probe_path}")
 
         # CAV = the weight vector of the probe
         cav = probe.coef_[0]
@@ -154,15 +235,16 @@ def main():
     # Plot TCAV bar chart
     grades = ["G0\nHealthy", "G1\nMild", "G2\nModerate", "G3\nSevere", "G4\nProliferative"]
     x = np.arange(5)
-    w = 0.25
-    colors = {"hemorrhage": "#E24B4A", "exudate": "#EF9F27", "edema": "#378ADD"}
+    n_concepts = len(tcav_results)
+    w = 0.8 / n_concepts
+    colors = {"microaneurysm": "#8E44AD", "hemorrhage": "#E24B4A", "exudate": "#EF9F27", "edema": "#378ADD"}
 
     fig, ax = plt.subplots(figsize=(12, 5))
     for i, (concept, scores) in enumerate(tcav_results.items()):
         vals = [scores[g] for g in range(5)]
         ax.bar(x + i*w, vals, w, label=concept.capitalize(), color=colors[concept])
 
-    ax.set_xticks(x + w); ax.set_xticklabels(grades)
+    ax.set_xticks(x + w*(n_concepts-1)/2); ax.set_xticklabels(grades)
     ax.set_ylabel("TCAV Score")
     ax.set_title("Concept Influence (TCAV) Across DR Grades")
     ax.legend(); ax.set_ylim(0, 1.1)

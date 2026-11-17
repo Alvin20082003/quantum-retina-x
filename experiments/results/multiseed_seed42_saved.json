@@ -1,0 +1,16 @@
+﻿{
+    "hybrid":  {
+                   "grade1_sensitivity":  0.5536,
+                   "accuracy":  0.8164,
+                   "auc_roc":  0.8938,
+                   "macro_f1":  0.6588,
+                   "kappa":  0.8711
+               },
+    "vit":  {
+                "grade1_sensitivity":  0.7321,
+                "accuracy":  0.7836,
+                "auc_roc":  0.9363,
+                "macro_f1":  0.6376,
+                "kappa":  0.8811
+            }
+}

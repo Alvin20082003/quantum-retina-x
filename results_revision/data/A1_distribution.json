@@ -1,0 +1,12 @@
+{
+  "100_sample_grade_distribution": {
+    "0": 50,
+    "1": 10,
+    "2": 27,
+    "3": 5,
+    "4": 8
+  },
+  "total": 100,
+  "method": "train_test_split(random_state=42, train_size=100, stratify=labels)",
+  "note": "No separate training script or saved indices found in repo. This is the unique deterministic 100-sample APTOS split with seed=42."
+}

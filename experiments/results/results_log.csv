@@ -12,3 +12,12 @@ timestamp,run_name,dataset,model,accuracy,macro_f1,auc_roc,kappa,grade1_sensitiv
 2026-07-14T21:15:51,crossval_idrid_ViT+VQC,idrid,ViT+VQC,0.4352,0.3354,0.6572,0.6184,0.5,"cross-dataset per_grade=[0.271, 0.5, 0.827, 0.048, 0.297]"
 2026-07-14T21:28:07,crossval_eyepacs_ViT-only,eyepacs,ViT-only,0.6422,0.352,0.7245,0.4119,0.181,"5k subset cross-dataset per_grade=[0.799, 0.181, 0.216, 0.073, 0.406]"
 2026-07-14T21:31:48,crossval_eyepacs_ViT+VQC,eyepacs,ViT+VQC,0.6304,0.3249,0.6033,0.4123,0.1897,"5k subset cross-dataset per_grade=[0.778, 0.19, 0.255, 0.008, 0.337]"
+2026-07-21T00:15:11,dme_vqc,messidor+idrid,ViT+VQC-DME,0.8909,0.7391,0.9278,,,sensitivity=0.785 specificity=0.917
+2026-07-21T15:11:38,faithfulness_idrid,idrid_segmentation,ViT-only (Grad-CAM),,,,,,n=81 mean_iou=0.035 mean_recall=0.126 mean_precision=0.054
+2026-08-10T21:42:31,vit_improved,aptos,ViT-Improved,0.8,0.6463,0.8839,0.8703,0.6071,"unfreeze=4layers+CLAHE+cosine+dropout per_grade=[0.978, 0.607, 0.687, 0.379, 0.614]"
+2026-11-17T11:26:59,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"
+2026-11-17T11:27:02,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"
+2026-11-17T11:27:12,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"
+2026-11-17T11:27:22,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"
+2026-11-17T11:32:05,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"
+2026-11-17T11:32:15,hybrid_vit_vqc,aptos,ViT+VQC,0.8164,0.6588,0.8938,0.8711,0.5536,"per_grade_sens=[0.974, 0.554, 0.807, 0.414, 0.477]"

@@ -1,0 +1,11 @@
+measurement,mean,std,unit,warmup,repeats,note
+full_vit_per_img_ms,19.0728,3.6783,ms,10,50,"ViT-only full, batch=1, cuda sync"
+head_only_vit_per_img_ms,0.1102,0.0815,ms,10,50,"ViT head Linear only, batch=1"
+full_hyb_per_img_ms,24.7206,1.3087,ms,10,50,"ViT+VQC full, batch=1, cuda sync"
+head_only_hyb_per_img_ms,10.9081,0.8795,ms,10,50,"reducer+VQC+head, batch=1"
+peak_gpu_mem_vit_mb,691.7,,MB,0,1,"after loading ViT-only, before inference"
+peak_gpu_mem_hyb_mb,700.9,,MB,0,1,"after loading ViT+VQC, before inference"
+device,NVIDIA GeForce RTX 3060 Laptop GPU,,,0,0,torch.cuda.get_device_name(0)
+vqc_simulator,default.qubit (PennyLane),,,0,0,"diff_method=parameter-shift, CPU; read from models/quantum.py"
+epoch_vit_100samples_s,5.71,,s,0,1,"1 full training epoch, 100-sample low-data loader"
+epoch_hyb_100samples_s,89.88,,s,0,1,"1 full training epoch, 100-sample low-data loader"

@@ -1,0 +1,7 @@
+Training dataset,Evaluation dataset,Model,Test n,Accuracy,Macro-F1,AUC,Kappa,G1-sensitivity
+APTOS (India),IDRiD,ViT-only,455,0.4286,0.3252,0.7861,0.5781,0.3182
+APTOS (India),IDRiD,ViT+VQC,455,0.4352,0.3354,0.6572,0.6184,0.5
+APTOS (India),Messidor,ViT-only,1744,0.594,0.3234,0.7598,0.4492,0.0333
+APTOS (India),Messidor,ViT+VQC,1744,0.5831,0.2953,0.577,0.4302,0.0556
+APTOS (India),EyePACS,ViT-only,35126,0.6363,0.3485,0.7194,0.4068,0.1699
+APTOS (India),EyePACS,ViT+VQC,35126,0.6286,0.3285,0.6078,0.4056,0.1813

@@ -1,0 +1,6 @@
+model,total_params,trainable_params
+ViT-only,86393093,86393093
+VQC-only,5269,5269
+ViT+VQC,86392373,3125
+Classical-A (Linear x2),3101,3101
+Classical-B (tanh block),3117,3117

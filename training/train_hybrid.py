@@ -35,7 +35,7 @@ def main():
 
     model = QuantumRetinaX(cfg).to(device)
     criterion = nn.CrossEntropyLoss(weight=info["class_weights"].to(device))
-+
+
     # Only train the new layers (backbone is frozen)
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     optim = AdamW(trainable_params, lr=cfg["train"]["lr_head"],
